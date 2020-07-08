@@ -121,7 +121,7 @@ Enter the password for the account on the remote server: my_password
 
 ## Screenshot
 
-![screenshot](screenshot.png)
+<img src="./screenshot.png">
 
 
 Ian Stewart - 2020-07-08

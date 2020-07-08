@@ -1,55 +1,108 @@
 #!/usr/bin//env python3
 #
 # paramiko_demo.py
-# Demonstrates copying files from remote server and executing commands on a
-# remote server.
+# Demonstrates copying files from/to a remote computer and also executing 
+# commands on the remote computer.
 #
-# For installation of paramikp using apt.
-# $ suro apt install python3-paramiko
+# Links:
+# https://www.paramiko.org/
+# http://docs.paramiko.org/en/stable/
 #
-# Ian Stewart 2020-0-08
+# Paramiko is a third-party library that adds SSH-protocol support, 
+# so it can work like an SSH-client.
 #
-# Warning: Confidential data regarding the remote server.
-# Can be read from b64.data file as comma seperated values
+# For installation of paramiko using apt...
+# $ sudo apt install python3-paramiko
+# Or from PyPI...
+# $ pip3 install paramiko
+#
+# Ian Stewart 2020-07-08
+#
+import paramiko
+import base64
+import argparse
+import subprocess
+import os
+import sys
+
+import gi
+gi.require_version('Gst', '1.0')
+gi.require_version('GObject', '2.0')
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+gi.require_version('GLib', '2.0')
+gi.require_version('Pango', '1.0')
+from gi.repository import Gtk, Gdk  # GLib, GObject, GLib, Pango, Gst,
+# Gdk used for CSS: screen = Gdk.Screen.get_default()
+#
+# ===
+# Warning: Confidential data regarding the remote computer.
+# Instead it can be read from b64.data file as comma seperated values
 # Changing all these from being empty strings will over-ride reading b64.data file.
 SERVER = ""
 PORT = 22
 USERNAME = ""
 PASSWORD = ""
+# ===
+#
+# Remote commands executed by clicking on a button
+COMMAND_1 = 'ls -l'
+COMMAND_2 = 'ls -l /etc'
+COMMAND_3 = 'uname -a'
+COMMAND_4 = 'cat /etc/debian_version'
 
+# Files to get and to put
+REMOTE_GET = "/var/log/wtmp"
+LOCAL_GET = "remote_server_wtmp_file"
+
+LOCAL_PUT = "paramiko_demo_local_file_to_put_on_remote_computer"
+REMOTE_PUT = "paramiko_demo_file_put_here_from_local_computer"
+
+# Main Frame
 TITLE = "Demo Paramiko"
 WINDOW_WIDTH = 950
-WINDOW_HEIGHT = 400
+WINDOW_HEIGHT = 500
+
+# Labels for the buttons
+BUTTON_LIST = ["Copy From Remote", "Copy To Remote", 
+                "Command 1", "Command 2", "Command 3", "Command 4"]
+
+PYTHON_VERSION_MIN = (3, 7, 0)
+
 HEADING_MESSAGE = """
-Welcome to the paramiko python module demo."
+Welcome to the Paramiko python module demo."
 
-Paramiko will copy a file from a remote server as well as execute commands on
-a remote server.
+Paramiko will copy a file from a remote server and to a remote server.
+It will also execute commands on a remote server.
 
-On launching this application four methods tested for the remote servers 
+On launching this application four options are available for the remote servers 
 details. This is to retrieve confidential data. Thus it is not ideal to have
 this data in the program or left in the command line history. However
 as this is a demo, then it may be acceptable.
 
 The four options used are:
 
-1. At the top of this program edit in values for SERVER = "", PORT = 22
+1. 
+At the top of this program edit in values for SERVER = "", PORT = 22
 USERNAME = "" and PASSWORD = ""
 
-2. At the bottom of this program uncomment
-#create_b64_message()
-#sys.exit()
-...and start the program. When prompted enter something like this:
+2. 
+Launch this program with the command line option --make-b64. E.g.
+$ paramiko_demo.py --make-b64
 
-SERVER = "1.2.3.4",PORT = 2022,USERNAME = "aroha",PASSWORD = "my_password"
+When prompted enter something like this for the remote computer:
 
-Re-insert the # to make the two lines of code comments again. Restart the
-application. A file named b64.data will now be read to retrieve these remote 
+SERVER = "1.2.3.4", PORT = 22, USERNAME = "admin", PASSWORD = "my_password"
+
+Restart the application normally. E.g. $ paramiko_demo.py. 
+A file named b64.data will now be read to retrieve these remote 
 server details. The contents of the b64.data file is something like this:
 0gIjIxOS44OS4yMDUuMTAwIixQT1JUID0gMjAyMixVU0VSTkFNRSA9ICJpImRlY3RoYWlsYW5kIg==
 
-3. Run the application with --help and observer the command line options 
-available. i.e.
+3. 
+Run the application with --help and observe the command line options 
+available. E.g.
+$ paramiko_demo.py --help
 
 usage: paramiko_demo.py [-h] [-s SERVER] [-p PORT] [-u USERNAME] [-w PASSWORD]
 
@@ -65,57 +118,26 @@ optional arguments:
 
 Start the application with something like this:
 
-$ python paramiko_demo.py -s 1.2.3.4 -p2022 -u aroha -w my_password
+$ python paramiko_demo.py -s 1.2.3.4 -p 2022 -u aroha -w my_password
 
 
-4. Just start the application and you will prompted to enter these remote server 
-details.
+4. 
+Just start without preforming any of the above and the application will prompt 
+you to enter these remote server details.
 
 """
-REMOTE = "/var/log/wtmp"
-LOCAL = "servers_wtmp"
 
-# Labels for the buttons
-BUTTON_LIST = ["Copy", "Command 1", "Command 2", "Command 3", "Command 4"]
-
-PYTHON_VERSION_MIN = (3, 7, 0)
-
-import paramiko
-import base64
-import os
-import sys
-import argparse
-import subprocess
-
-import gi
-gi.require_version('Gst', '1.0')
-gi.require_version('GObject', '2.0')
-gi.require_version('Gtk', '3.0')
-gi.require_version('Gdk', '3.0')
-gi.require_version('GLib', '2.0')
-gi.require_version('Pango', '1.0')
-from gi.repository import Gtk, Gst, Gdk  #, GObject, Gtk, Gdk, GLib, Pango
-
-
-# subprocess.run() capture_output=True requires V3.7+
-# sys.version_info(major=3, minor=8, micro=2, releaselevel='final', serial=0)
-if sys.version_info < PYTHON_VERSION_MIN: 
-    print("Python must be at Version {}.{} or higher."
-        .format(PYTHON_VERSION_MIN[0], PYTHON_VERSION_MIN[1]))
-    sys.exit("Exiting...")
-
-
+# Use CSS as mothod of changing fonts and colours, etc.
+# see: https://developer.gnome.org/gtk3/stable/chap-css-overview.html
 #    /* CSS to set the font size for everything */
 #    * {
 #    font: 16px Mono;
 #    }
-# Use CSS as mothod of changing fonts and colours, etc.
-# see: https://developer.gnome.org/gtk3/stable/chap-css-overview.html
 CSS = """
     /* Theme all widgets with the style class text-button */
     .text-button {
     color: blue;
-    font: 18px Sans;    
+    font: 16px Sans;    
     }
     
     /* Theme any widget in the scrolledwindow. i.e. The textview */
@@ -125,6 +147,13 @@ CSS = """
         font: 18px Mono; 
     }
 """
+
+# subprocess.run() capture_output=True requires Python V3.7+
+# sys.version_info(major=3, minor=8, micro=2, releaselevel='final', serial=0)
+if sys.version_info < PYTHON_VERSION_MIN: 
+    print("Python must be at Version {}.{} or higher."
+        .format(PYTHON_VERSION_MIN[0], PYTHON_VERSION_MIN[1]))
+    sys.exit("Exiting...")
 
 class Demo_Window(Gtk.Window):
     'Launch the Demo window'
@@ -158,7 +187,7 @@ class Demo_Window(Gtk.Window):
         # Setup window
         self.set_title(TITLE)
         self.set_size_request(WINDOW_WIDTH, WINDOW_HEIGHT)
-        self.set_default_size(300, 200)
+        #self.set_default_size(300, 200)
         self.connect("destroy", Gtk.main_quit, "WM destroy")
         self.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
 
@@ -168,7 +197,7 @@ class Demo_Window(Gtk.Window):
         self.vbox = Gtk.VBox() 
         self.vbox.set_margin_start(10)
         self.vbox.set_margin_end(10) 
-        #self.vbox.set_margin_top(MARGIN_SIZE)
+        self.vbox.set_margin_top(10)
         self.vbox.set_margin_bottom(10)
      
 
@@ -193,7 +222,7 @@ class Demo_Window(Gtk.Window):
         scrolled_window = Gtk.ScrolledWindow()
         scrolled_window.set_hexpand(True)
         scrolled_window.set_vexpand(True)
-        scrolled_window.set_min_content_height(200)
+        #scrolled_window.set_min_content_height(300)
    
         self.textview_1 = Gtk.TextView()
         self.textbuffer_1 = self.textview_1.get_buffer()
@@ -230,52 +259,48 @@ class Demo_Window(Gtk.Window):
         Callback for buttons in the button box. value is index of button
         """
         if index == 0:
-            #print("Index: 0. Copy?")
-            # Perform copy operation
-            self.textbuffer_1.set_text("Copy Remote File: " + REMOTE + "\n" +
-                    "To Local File: " + LOCAL + "\n\n")
+            # Perform copy from remote server operation
+            self.textbuffer_1.set_text("Copy Remote File: " + REMOTE_GET + "\n" +
+                    "To Local File: " + LOCAL_GET + "\n\n")
             
             copy_from_remote_server(args.server, args.port, args.username, 
-                    args.password, REMOTE, LOCAL)
-                    
-            response = subprocess.run(["ls","-l", LOCAL], capture_output=True)
+                    args.password, REMOTE_GET, LOCAL_GET)
+
+            # Check file has arrived on local computer...        
+            response = subprocess.run(["ls","-l", LOCAL_GET], capture_output=True)
             string = response.stdout.decode("utf-8")
-            self.textbuffer_1.set_text("Copy Remote File: " + REMOTE + "\n" +
-                    "To Local File: " + LOCAL + "\n\n" + string)
-       
-
+            self.textbuffer_1.set_text("Copy Remote File: " + REMOTE_GET + "\n" +
+                    "To Local File: " + LOCAL_GET + "\n\n" + string)
+ 
         if index == 1:
-            COMMAND = 'ls -l'
-            return_string = execute_command_on_remote_server(args.server, 
-                    args.port, args.username, args.password, COMMAND)
-            self.textbuffer_1.set_text("Remote Command: " + COMMAND + "\n\n" 
-                    + return_string)
-            #print(return_string)
+            # Perform copy to remote server operation
+            self.textbuffer_1.set_text("Copy Local File: " + LOCAL_PUT + "\n" +
+                    "To Remote File: " + REMOTE_PUT + "\n\n")
             
+            copy_to_remote_server(args.server, args.port, args.username, 
+                    args.password, LOCAL_PUT, REMOTE_PUT, )
+            # Add message to check the file arrived.
+            self.textbuffer_1.set_text("Copy Local File: " + LOCAL_PUT + "\n" +
+                    "To Remote File: " + REMOTE_PUT + "\n\n" +
+                    "Use Command button to check file has been copied")
+                   
+        if index == 2:       
+            self.execute_command(COMMAND_1)            
 
-        if index == 2:
-            COMMAND = 'ls -l /etc'
-            return_string = execute_command_on_remote_server(args.server, 
-                    args.port, args.username, args.password, COMMAND)
-            self.textbuffer_1.set_text("Remote Command: " + COMMAND + "\n\n" 
-                    + return_string)
-            #print(return_string)
-   
         if index == 3:
-            COMMAND = 'uname -a'
-            return_string = execute_command_on_remote_server(args.server, 
-                    args.port, args.username, args.password, COMMAND)
-            self.textbuffer_1.set_text("Remote Command: " + COMMAND + "\n\n" 
-                    + return_string)
-            #print(return_string)   
-
+            self.execute_command(COMMAND_2)
+   
         if index == 4:
-            COMMAND = 'cat /etc/debian_version'
-            return_string = execute_command_on_remote_server(args.server, 
-                    args.port, args.username, args.password, COMMAND)
-            self.textbuffer_1.set_text("Remote Command: " + COMMAND + "\n\n" 
-                    + return_string)
-            #print(return_string)              
+            self.execute_command(COMMAND_3)            
+
+        if index == 5:
+            self.execute_command(COMMAND_4)
+            
+    def execute_command(self, COMMAND):           
+        return_string = execute_command_on_remote_server(args.server, 
+                args.port, args.username, args.password, COMMAND)
+        self.textbuffer_1.set_text("Remote Command: " + COMMAND + "\n\n" 
+                + return_string)
 
 
 def copy_from_remote_server(server, port, username, password, remote, local):
@@ -283,8 +308,7 @@ def copy_from_remote_server(server, port, username, password, remote, local):
     Copy a file from a remote server.
     A previous ssh login should have been performed so ~/.ssh/known_hosts
     has the keys.
-    """
-    
+    """    
     client = paramiko.SSHClient()
     client.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
 
@@ -299,6 +323,27 @@ def copy_from_remote_server(server, port, username, password, remote, local):
     sftp.close()
     client.close()
     
+
+def copy_to_remote_server(server, port, username, password, local, remote):
+    """
+    Copy a file to a remote server.
+    A previous ssh login should have been performed so ~/.ssh/known_hosts
+    has the keys.
+    """
+    client = paramiko.SSHClient()
+    client.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
+
+    try:
+        client.connect(server, port, username, password)
+    except Exception as e:
+        print("Error: {}".format(e))
+        # paramiko.ssh_exception.AuthenticationException: Authentication failed
+
+    sftp = client.open_sftp()
+    sftp.put(local, remote)
+    sftp.close()
+    client.close()
+
     
 def execute_command_on_remote_server(server, port, username, password, command):
     """
@@ -330,12 +375,12 @@ def create_b64_message():
     """
     Convert the confidential remote server data to be a b64 string
     """
-    message = input("Enter a message you want converted to base64: ")
+    message = input("Enter parameters string: ")
     message_bytes = message.encode('utf-8')
     base64_bytes = base64.b64encode(message_bytes)
     #print("Encoded message in bytes:{}".format(base64_bytes))
     message_b64_ascii = base64_bytes.decode('utf-8')
-    print("Encoded message in utf-8:{}".format(message_b64_ascii))
+    print("\nEncoded message in utf-8:{}".format(message_b64_ascii))
 
     # Check decoding: 
     base64_bytes = message_b64_ascii.encode('utf-8')
@@ -359,14 +404,18 @@ def create_b64_message():
 if __name__=="__main__":
     pass
 
-# One-time code to create a base64 message:
-# Run the create_b64_message() utility and add four parameters as follows:
-# SERVER = "1.2.3.4",PORT = 2022,USERNAME = "aroha",PASSWORD = "my_password"
-#create_b64_message()
-#sys.exit()
+# One-time code to create a base64 message. Triggered by the --make-b64 option:
+if " ".join(sys.argv).find("--make-b64") != -1:
+    print("Making the base 64 file: b64.data")
+    print("Enter the four remote computer parameters similar to this:")
+    print("SERVER='1.2.3.4', PORT=22, USERNAME='admin', PASSWORD='my_pass'")
+    create_b64_message()
+    print("\nNow restart the program normally. E.g. $ python paramiko_demo.py")
+    sys.exit()
 
+# Normal startup
 # If not set in constants section at the top of the program, 
-# then try for b64.data file to load constants.
+# then try for the existance of the b64.data file to load constants.
 if SERVER == "" or USERNAME == "" or PASSWORD == "":
 
     try: 
@@ -379,13 +428,11 @@ if SERVER == "" or USERNAME == "" or PASSWORD == "":
             constant_list = message.split(",")
             #print(data_list)
             for constant in constant_list:
+                constant = constant.strip()
                 exec(constant)            
             
     except FileNotFoundError as e:
-        print("b64.data file not found")
-        print("Continuing...")
-        #print("No server, port, username or password details")
-        #sys.exit("exiting...")
+        print("b64.data file not found. Continuing...")
         
 #print(SERVER, PORT, USERNAME, PASSWORD)        
         
@@ -409,7 +456,7 @@ parser.add_argument("-u", "--username",
                     default = USERNAME,
                     help = "Account name on remote server .")
 
-# Password for development only. Removes need for first screen. TODO: Comment out.
+# Password for development only. TODO: Comment out.
 parser.add_argument("-w", "--password", 
                     type = str, 
                     default = PASSWORD,
@@ -423,17 +470,36 @@ if args.server == "":
     args.server = input("\nEnter the name or ip address of the server: ")
     
 if args.port == 22:
-    args.port = int(input("\nEnter the ssh port number: "))       
+    args.port = int(input("Enter the ssh port number: "))       
 
 if args.username == "":
-    args.username = input("\nEnter the Account name on the remote server: ")
+    args.username = input("Enter the Account name on the remote server: ")
 
-# Password for development only. Removes need for first screen. TODO: Comment out.
+# Password for development only. TODO: Comment out.
 if args.password == "":
-    args.password = input("\nEnter the password for the account on the remote server: ")
+    args.password = input("Enter the password for the account on the remote server: ")
 
 
 # Launch Gtk GUI
 # GObject.threads_init()  # <-- Deprecated since V3.11
-Gst.init(None)
+Gtk.init(None)
 Demo_Window()
+
+
+"""
+Notes: Using ubuntu 20.04
+
+$ apt search paramiko
+
+paramiko-doc/focal,focal 2.6.0-2 all
+  Make ssh v2 connections with Python (Documentation)
+
+python3-dput/focal,focal 1.29 all
+  next generation Debian package upload tool (Python 3 library)
+
+python3-netmiko/focal,focal 2.4.2-1 all
+  multi-vendor library for SSH connections to network devices - Python 3.X
+
+python3-paramiko/focal,focal,now 2.6.0-2 all [installed,automatic]
+  Make ssh v2 connections (Python 3)
+"""

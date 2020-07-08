@@ -119,4 +119,9 @@ Enter the Account name on the remote server: admin
 Enter the password for the account on the remote server: my_password
 ```
 
+## Screenshot
+
+![screenshot](screenshot.png)
+
+
 Ian Stewart - 2020-07-08
